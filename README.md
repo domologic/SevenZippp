@@ -26,6 +26,7 @@ First of all, you need to initialize the library with your "7z.so" file:
     lib.Load("<path/to>/7z.so");
     
 To extract an archive, here's an example:
+
     try {
         SevenZippp::SevenZipExtractor extractor(lib, "<path/to>/archive.7z");
         extractor.ExtractFile("<foldername>", "secretpassword", ".*");
@@ -34,6 +35,7 @@ To extract an archive, here's an example:
     }
 
 It's pretty similar to creating an archive:
+
     try {
         SevenZippp::SevenZipCompressor compressor(*m_plib, "<path/to>/archive.7z", password);
         compressor.CompressDirectory(path);
@@ -42,6 +44,7 @@ It's pretty similar to creating an archive:
     } catch(SevenZippp::SevenZipException e) {
         std::cout << e.GetMessage() << std::endl;
     }
+    
 ### Build Process:
 
 We're using CMake to build the static library.
