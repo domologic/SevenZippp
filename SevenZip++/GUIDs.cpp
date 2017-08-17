@@ -1,3 +1,3 @@
 #include "stdafx.h"
-#include <InitGuid.h>
+#include <Common/MyInitGuid.h>
 #include "GUIDs.h"

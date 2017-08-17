@@ -2,8 +2,9 @@
 //   ./CPP/7zip/Guid.txt
 #pragma once
 
+#include <Common/MyGuidDef.h>
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {

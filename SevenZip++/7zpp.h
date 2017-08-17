@@ -4,6 +4,7 @@
 #include "SevenZipCompressor.h"
 #include "SevenZipExtractor.h"
 
+#ifdef _WIN32
 
 #ifdef _DEBUG
 	#ifdef _UNICODE
@@ -17,4 +18,8 @@
 	#else
 		#pragma comment ( lib, "7zpp_a.lib" )
 	#endif
+#endif
+
+#else
+	#pragma comment ( lib, "7z.so")
 #endif

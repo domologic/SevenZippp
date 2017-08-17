@@ -2,9 +2,11 @@
 
 
 #include <7zip/IStream.h>
+#include <Common/MyCom.h>
+#include "ProgressCallback.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
@@ -13,11 +15,12 @@ namespace intl
 	private:
 
 		long				m_refCount;
-		CComPtr< IStream >	m_baseStream;
+		CMyComPtr< IOutStream >	m_baseStream;
+		CProgressCallback* m_callback;
 
 	public:
 
-		OutStreamWrapper( const CComPtr< IStream >& baseStream );
+		OutStreamWrapper( const CMyComPtr< IOutStream >& baseStream, CProgressCallback *callback = 0 );
 		virtual ~OutStreamWrapper();
 
 		STDMETHOD(QueryInterface)( REFIID iid, void** ppvObject );

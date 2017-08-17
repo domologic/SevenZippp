@@ -52,7 +52,7 @@
 //
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
@@ -62,7 +62,11 @@ namespace intl
 		struct StringValue
 		{
 			TEnum			value;
+			#ifdef _WIN32
 			const TCHAR*	string;
+			#else
+			const char* string;
+			#endif
 		};
 
 		static TEnum Parse( const TString& string, const TEnum defaultValue )
@@ -70,7 +74,7 @@ namespace intl
 			const StringValue* it = DerivedDef::Strings;
 			for (; it->string != NULL; ++it )
 			{
-				if ( string.Compare( it->string ) == 0 )
+				if ( string.compare( it->string ) == 0 )
 				{
 					return it->value;
 				}
@@ -101,13 +105,13 @@ namespace intl
 	{
 	private:
 
-		typedef typename EnumerationValue< TEnum, TEnumClass, DefaultValue > ThisClass;
+		#define ThisClass EnumerationValue< TEnum, TEnumClass, DefaultValue >
 
 		TEnum m_value;
 
 	public:
 
-		typedef typename TEnum Enum;
+		#define Enum TEnum
 
 		EnumerationValue():
 			m_value( DefaultValue )

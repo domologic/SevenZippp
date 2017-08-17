@@ -5,7 +5,7 @@
 #include "FileInfo.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
@@ -39,8 +39,13 @@ namespace intl
 
 		static bool IsAllFilesPattern( const TString& searchPattern );
 		static bool IsSpecialFileName( const TString& fileName );
+#ifdef _WIN32
 		static bool IsDirectory( const WIN32_FIND_DATA& fdata );
 		static FilePathInfo ConvertFindInfo( const TString& directory, const WIN32_FIND_DATA& fdata );
+#else
+		//static bool IsDirectory( const WIN32_FIND_DATA& fdata );
+		//static FilePathInfo ConvertFindInfo( const TString& directory, const WIN32_FIND_DATA& fdata );
+#endif
 	};
 }
 }

@@ -1,13 +1,20 @@
 #include "stdafx.h"
 #include "SevenZipCompressor.h"
+#include "CompressionFormat.h"
 #include "GUIDs.h"
 #include "FileSys.h"
 #include "ArchiveUpdateCallback.h"
 #include "OutStreamWrapper.h"
 #include "PropVariant.h"
+#ifdef __linux__
+#include <stdio.h>
+#define _T(s) s
+#endif
+#include "ProgressCallback.h"
+#include <fstream>
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 
 using namespace intl;
@@ -15,7 +22,7 @@ using namespace intl;
 
 const TString SearchPatternAllFiles = _T( "*" );
 
-CComPtr< IOutArchive > GetArchiveWriter(const SevenZipLibrary& library, const CompressionFormatEnum& format)
+CMyComPtr< IOutArchive > GetArchiveWriter(const SevenZipLibrary& library, const CompressionFormatEnum& format)
 {
    const GUID* guid = NULL;
 
@@ -62,15 +69,18 @@ CComPtr< IOutArchive > GetArchiveWriter(const SevenZipLibrary& library, const Co
       break;
    }
 
-   CComPtr< IOutArchive > archive;
-   library.CreateObject(*guid, IID_IOutArchive, reinterpret_cast< void** >(&archive));
+   CMyComPtr< IOutArchive > archive;
+   library.CreateObject(guid, &IID_IOutArchive, reinterpret_cast< void** >(&archive));
    return archive;
 }
 
-SevenZipCompressor::SevenZipCompressor( const SevenZipLibrary& library, const TString& archivePath )
+SevenZipCompressor::SevenZipCompressor( const SevenZipLibrary& library, const TString& archivePath, const TString& password)
 	: m_library( library )
 	, m_archivePath( archivePath )
+	, m_password ( password )
 {
+	m_console = library.getConsole();
+	m_progressCallback = 0;
 }
 
 SevenZipCompressor::~SevenZipCompressor()
@@ -120,32 +130,25 @@ void SevenZipCompressor::CompressFile( const TString& filePath )
 
 	if ( files.empty() )
 	{
-		throw SevenZipException( StrFmt( _T( "File \"%s\" does not exist" ), filePath.c_str() ) );
+		m_console->PrintMessage(string_format("File '%s' does not exist!", filePath.c_str()));
+		throw SevenZipException("Error Compressing files1!");
 	}
 
 	CompressFilesToArchive( TString(), files );
-}
-
-CComPtr< IStream > SevenZipCompressor::OpenArchiveStream()
-{
-	CComPtr< IStream > fileStream = FileSys::OpenFileToWrite( m_archivePath );
-	if ( fileStream == NULL )
-	{
-		throw SevenZipException( StrFmt( _T( "Could not create archive \"%s\"" ), m_archivePath.c_str() ) );
-	}
-	return fileStream;
 }
 
 void SevenZipCompressor::FindAndCompressFiles( const TString& directory, const TString& searchPattern, const TString& pathPrefix, bool recursion )
 {
 	if ( !FileSys::DirectoryExists( directory ) )
 	{
-		throw SevenZipException( StrFmt( _T( "Directory \"%s\" does not exist" ), directory.c_str() ) );
+		m_console->PrintMessage(string_format("Directory \"%s\" does not exist", directory.c_str()));
+		throw SevenZipException("Error Compressing files2!");
 	}
 	
 	if ( FileSys::IsDirectoryEmptyRecursive( directory ) )
 	{
-		throw SevenZipException( StrFmt( _T( "Directory \"%s\" is empty" ), directory.c_str() ) );
+		m_console->PrintMessage(string_format("Directory \"%s\" is empty", directory.c_str()));
+		throw SevenZipException( "Error compressing files3!" );
 	}
 
 	std::vector< FilePathInfo > files = FileSys::GetFilesInDirectory( directory, searchPattern, recursion );
@@ -154,28 +157,45 @@ void SevenZipCompressor::FindAndCompressFiles( const TString& directory, const T
 
 void SevenZipCompressor::CompressFilesToArchive( const TString& pathPrefix, const std::vector< FilePathInfo >& filePaths )
 {
-   CComPtr< IOutArchive > archiver = GetArchiveWriter(m_library, m_compressionFormat);
+   CMyComPtr< IOutArchive > archiver = GetArchiveWriter(m_library, m_compressionFormat);
 
 	SetCompressionProperties( archiver );
-
-	CComPtr< OutStreamWrapper > outFile = new OutStreamWrapper( OpenArchiveStream() );
-	CComPtr< ArchiveUpdateCallback > callback = new ArchiveUpdateCallback( pathPrefix, filePaths );
+	// OpenArchiveStream:
+	CMyComPtr< IOutStream > fileStream = FileSys::OpenFileToWrite( m_archivePath );
+	if ( fileStream == NULL )
+	{
+		m_console->PrintMessage(string_format("Could not create archive '%s'!", m_archivePath.c_str()));
+		throw SevenZipException("Error Compressing files4!");
+	}
+	// return fileStream
+	int FileSizeSum = 0;
+	CMyComPtr< OutStreamWrapper > outFile = new OutStreamWrapper( fileStream );
+	CProgressCallback cb(m_progressCallback);
+	for (int i = 0; i < filePaths.size(); i++) {
+		std::ifstream in(filePaths.at(i).FilePath, std::ifstream::ate | std::ifstream::binary);
+		int size = in.tellg();
+		FileSizeSum += size;
+	}
+	cb.setSize(FileSizeSum);
+	CMyComPtr< ArchiveUpdateCallback > callback = new ArchiveUpdateCallback( pathPrefix, filePaths, m_password, m_console, &cb );
 
 	HRESULT hr = archiver->UpdateItems( outFile, (UInt32) filePaths.size(), callback );
+	
 	if ( hr != S_OK ) // returning S_FALSE also indicates error
 	{
-		throw SevenZipException( GetCOMErrMsg( _T( "Create archive" ), hr ) );
+		m_console->PrintMessage(string_format("%s: HRESULT = 0x%08X\n", "Compress Archive", hr));
+		throw SevenZipException( "Error creating Archive!" );
 	}
 }
 
-void SevenZipCompressor::SetCompressionProperties( IUnknown* outArchive )
+void SevenZipCompressor::SetCompressionProperties( void* outArchive )
 {
 	const size_t numProps = 1;
 	const wchar_t* names[numProps] = { L"x" };
 	CPropVariant values[numProps] = { static_cast< UInt32 >( m_compressionLevel.GetValue() ) };
 
-	CComPtr< ISetProperties > setter;
-	outArchive->QueryInterface( IID_ISetProperties, reinterpret_cast< void** >( &setter ) );
+	CMyComPtr< ISetProperties > setter;
+	((IUnknown *) outArchive)->QueryInterface( IID_ISetProperties, reinterpret_cast< void** >( &setter ) );
 	if ( setter == NULL )
 	{
 		throw SevenZipException( _T( "Archive does not support setting compression properties" ) );
@@ -184,7 +204,7 @@ void SevenZipCompressor::SetCompressionProperties( IUnknown* outArchive )
 	HRESULT hr = setter->SetProperties( names, values, numProps );
 	if ( hr != S_OK )
 	{
-		throw SevenZipException( GetCOMErrMsg( _T( "Setting compression properties" ), hr ) );
+		throw SevenZipException( "Error Setting compression properties" );
 	}
 }
 

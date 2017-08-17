@@ -5,9 +5,10 @@
 
 #include <7zip/Archive/IArchive.h>
 #include <7zip/IPassword.h>
+#include "ConsoleCallback.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
@@ -16,10 +17,15 @@ namespace intl
 	private:
 
 		long m_refCount;
+		ConsoleCallback *m_console;
+		std::string m_password;
+		bool m_passwordDefined;
+
 
 	public:
 
-		ArchiveOpenCallback();
+		ArchiveOpenCallback(ConsoleCallback *console, std::string password);
+		ArchiveOpenCallback(ConsoleCallback *console);
 		virtual ~ArchiveOpenCallback();
 
 		STDMETHOD(QueryInterface)( REFIID iid, void** ppvObject );

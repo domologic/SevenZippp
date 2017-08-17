@@ -1,18 +1,20 @@
 #pragma once
+#include "String.h"
 
-
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
 	struct FileInfo
 	{
 		TString		FileName;
+		#ifdef _WIN32
 		FILETIME	LastWriteTime;
 		FILETIME	CreationTime;
 		FILETIME	LastAccessTime;
-		ULONGLONG	Size;
-		UINT		Attributes;
+		#endif
+		unsigned long long	Size;
+		unsigned int		Attributes;
 		bool		IsDirectory;
 	};
 

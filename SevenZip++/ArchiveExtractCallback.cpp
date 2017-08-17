@@ -1,25 +1,50 @@
 // This file is based on the following file from the LZMA SDK (http://www.7-zip.org/sdk.html):
 //   ./CPP/7zip/UI/Client7z/Client7z.cpp
+#ifdef _WIN32
 #include "StdAfx.h"
+#else
+#include <stdlib.h>
+#include <utime.h>
+#endif
 #include "ArchiveExtractCallback.h"
-#include "PropVariant.h"
 #include "FileSys.h"
 #include "OutStreamWrapper.h"
-#include <comdef.h>
+#include <stdio.h>
+/*#include "PropVariant.h"
 
 
-namespace SevenZip
+#include <comdef.h>*/
+
+namespace SevenZippp
 {
 namespace intl
 {
 
-const TString EmptyFileAlias = _T( "[Content]" );
+//const TString EmptyFileAlias = _T( "[Content]" );
 
 
-ArchiveExtractCallback::ArchiveExtractCallback( const CComPtr< IInArchive >& archiveHandler, const TString& directory )
+ArchiveExtractCallback::ArchiveExtractCallback( const CMyComPtr< IInArchive >& archiveHandler, const TString& directory, ConsoleCallback *console, std::string password, CProgressCallback *callback = 0 )
 	: m_refCount( 0 )
 	, m_archiveHandler( archiveHandler )
 	, m_directory( directory )
+	, m_outStream( 0 )
+	, m_isDir( false )
+	, m_console( console )
+	, m_password ( password )
+	, m_passwordDefined ( password.size() > 0 )
+	, m_callback ( callback )
+{
+}
+
+ArchiveExtractCallback::ArchiveExtractCallback( const CMyComPtr< IInArchive >& archiveHandler, C7ZipOutStream* outStream, ConsoleCallback *console, std::string password, CProgressCallback *callback = 0 )
+	: m_refCount( 0 )
+	, m_archiveHandler( archiveHandler )
+	, m_outStream( outStream )
+	, m_isDir(false)
+	, m_console( console )
+	, m_password ( password )
+	, m_passwordDefined ( password.size() > 0 )
+	, m_callback ( callback )
 {
 }
 
@@ -29,12 +54,12 @@ ArchiveExtractCallback::~ArchiveExtractCallback()
 
 STDMETHODIMP ArchiveExtractCallback::QueryInterface( REFIID iid, void** ppvObject )
 {
-	if ( iid == __uuidof( IUnknown ) )
+	/*if ( iid == __uuidof( IUnknown ) )
 	{
 		*ppvObject = reinterpret_cast< IUnknown* >( this );
 		AddRef();
 		return S_OK;
-	}
+	}*/
 
 	if ( iid == IID_IArchiveExtractCallback )
 	{
@@ -55,17 +80,19 @@ STDMETHODIMP ArchiveExtractCallback::QueryInterface( REFIID iid, void** ppvObjec
 
 STDMETHODIMP_(ULONG) ArchiveExtractCallback::AddRef()
 {
-	return static_cast< ULONG >( InterlockedIncrement( &m_refCount ) );
+//	return static_cast< ULONG >( InterlockedIncrement( &m_refCount ) );
+	return 0;
 }
 
 STDMETHODIMP_(ULONG) ArchiveExtractCallback::Release()
 {
-	ULONG res = static_cast< ULONG >( InterlockedDecrement( &m_refCount ) );
+	/*ULONG res = static_cast< ULONG >( InterlockedDecrement( &m_refCount ) );
 	if ( res == 0 )
 	{
 		delete this;
 	}
-	return res;
+	return res;*/
+	return 0;
 }
 
 STDMETHODIMP ArchiveExtractCallback::SetTotal( UInt64 size )
@@ -80,49 +107,51 @@ STDMETHODIMP ArchiveExtractCallback::SetCompleted( const UInt64* completeValue )
 
 STDMETHODIMP ArchiveExtractCallback::GetStream( UInt32 index, ISequentialOutStream** outStream, Int32 askExtractMode )
 {
-	try
+	
+	// Retrieve all the various properties for the file at this index.
+	GetPropertyFilePath( index );
+	if ( askExtractMode != NArchive::NExtract::NAskMode::kExtract )
 	{
-		// Retrieve all the various properties for the file at this index.
-		GetPropertyFilePath( index );
-		if ( askExtractMode != NArchive::NExtract::NAskMode::kExtract )
+		//return S_OK;
+	}
+
+	GetPropertyAttributes( index );
+	GetPropertyIsDir( index );
+	GetPropertyModifiedTime( index );
+	GetPropertySize( index );
+	
+	// if no stream was given, create one on our own
+	if (m_outStream == 0) {
+		// TODO: m_directory could be a relative path
+		m_absPath = FileSys::AppendPath( m_directory, m_relPath );
+		
+
+		if ( m_isDir )
 		{
+			// Creating the directory here supports having empty directories.
+			FileSys::CreateDirectoryTree( m_absPath );
+			*outStream = NULL;
 			return S_OK;
 		}
 
-		GetPropertyAttributes( index );
-		GetPropertyIsDir( index );
-		GetPropertyModifiedTime( index );
-		GetPropertySize( index );
-	}
-	catch ( _com_error& ex )
-	{
-		return ex.Error();
-	}
+		
+		TString absDir = FileSys::GetPath( m_absPath );
+		FileSys::CreateDirectoryTree( absDir );
+		
+		CMyComPtr< IOutStream > fileStream = FileSys::OpenFileToWrite( m_absPath );
+		if ( fileStream == NULL )
+		{
+			m_absPath.clear();
+			return S_FALSE;
+		}
 
-	// TODO: m_directory could be a relative path
-	m_absPath = FileSys::AppendPath( m_directory, m_relPath );
-
-	if ( m_isDir )
-	{
-		// Creating the directory here supports having empty directories.
-		FileSys::CreateDirectoryTree( m_absPath );
-		*outStream = NULL;
-		return S_OK;
+		CMyComPtr< OutStreamWrapper > wrapperStream = new OutStreamWrapper( fileStream, m_callback );
+		*outStream = wrapperStream.Detach();
+	} else {
+		// use given stream.
+		*outStream = (ISequentialOutStream *) m_outStream;
 	}
-
-	TString absDir = FileSys::GetPath( m_absPath );
-	FileSys::CreateDirectoryTree( absDir );
 	
-	CComPtr< IStream > fileStream = FileSys::OpenFileToWrite( m_absPath );
-	if ( fileStream == NULL )
-	{
-		m_absPath.clear();
-		return HRESULT_FROM_WIN32( GetLastError() );
-	}
-
-	CComPtr< OutStreamWrapper > wrapperStream = new OutStreamWrapper( fileStream );
-	*outStream = wrapperStream.Detach();
-
 	return S_OK;
 }
 
@@ -140,6 +169,7 @@ STDMETHODIMP ArchiveExtractCallback::SetOperationResult( Int32 operationResult )
 
 	if ( m_hasModifiedTime )
 	{
+#ifdef _WIN32
 		HANDLE fileHandle = CreateFile( m_absPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 		if ( fileHandle != INVALID_HANDLE_VALUE )
 		{
@@ -147,46 +177,68 @@ STDMETHODIMP ArchiveExtractCallback::SetOperationResult( Int32 operationResult )
 			CloseHandle( fileHandle );
 		}
 	}
+#else
+		utimbuf time;
+		time.modtime = m_props.st_mtime;
+		time.actime = m_props.st_atime;
+		utime(m_absPath.c_str(), &time);
+	}
+	//chmod(m_absPath.c_str(), m_props.st_mode); // sounds good, doesn't work
+#endif
 
 	if ( m_hasAttrib )
 	{
+#ifdef _WIN32
 		SetFileAttributes( m_absPath.c_str(), m_attrib );
+#endif
 	}
-
+	
+	TString fileName = FileSys::GetFileName(m_absPath);
+	
 	return S_OK;
 }
 
 STDMETHODIMP ArchiveExtractCallback::CryptoGetTextPassword( BSTR* password )
 {
-	// TODO: support passwords
-	return E_ABORT;
+	if (!m_passwordDefined) {
+		m_console->PrintMessage("Password is not defined!");
+		return E_ABORT;
+	}
+	std::wstring wpassword(m_password.begin(), m_password.end());
+	*password = AllocateBSTR(wpassword.c_str());
+	return S_OK;
 }
 
 void ArchiveExtractCallback::GetPropertyFilePath( UInt32 index )
 {
-	CPropVariant prop;
+	PROPVARIANT prop;
 	HRESULT hr = m_archiveHandler->GetProperty( index, kpidPath, &prop );
 	if ( hr != S_OK )
 	{
-		_com_issue_error( hr );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 
 	if ( prop.vt == VT_EMPTY )
 	{
-		m_relPath = EmptyFileAlias;
+		//m_relPath = EmptyFileAlias;
+		// static const wchar_t * const kEmptyFileAlias = L"[Content]";
+		m_relPath = "[Content]";
 	}
 	else if ( prop.vt != VT_BSTR )
 	{
-		_com_issue_error( E_FAIL );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 	else
 	{
-		_bstr_t bstr = prop.bstrVal;
 #ifdef _UNICODE
-		m_relPath = bstr;
+		m_relPath = prop.bstrVal;
 #else
-		char relPath[MAX_PATH];
-		int size = WideCharToMultiByte( CP_UTF8, 0, bstr, bstr.length(), relPath, MAX_PATH, NULL, NULL );
+		char relPath[0x0104]; // MAX_PATH = 0x0104
+#ifdef _WIN32
+		int size = WideCharToMultiByte( CP_UTF8, 0, prop.bstrVal, prop.bstrVal.length(), relPath, 0x0104, NULL, NULL );
+#else
+		int size = wcstombs(relPath, prop.bstrVal, 0x0104);
+#endif
 		m_relPath.assign( relPath, size );
 #endif
 	}
@@ -194,11 +246,11 @@ void ArchiveExtractCallback::GetPropertyFilePath( UInt32 index )
 
 void ArchiveExtractCallback::GetPropertyAttributes( UInt32 index )
 {
-	CPropVariant prop;
+	PROPVARIANT prop;
 	HRESULT hr = m_archiveHandler->GetProperty( index, kpidAttrib, &prop );
 	if ( hr != S_OK )
 	{
-		_com_issue_error( hr );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 
 	if ( prop.vt == VT_EMPTY )
@@ -208,7 +260,7 @@ void ArchiveExtractCallback::GetPropertyAttributes( UInt32 index )
 	}
 	else if ( prop.vt != VT_UI4 )
 	{
-		_com_issue_error( E_FAIL );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 	else
 	{
@@ -219,11 +271,11 @@ void ArchiveExtractCallback::GetPropertyAttributes( UInt32 index )
 
 void ArchiveExtractCallback::GetPropertyIsDir( UInt32 index )
 {
-	CPropVariant prop;
+	PROPVARIANT prop;
 	HRESULT hr = m_archiveHandler->GetProperty( index, kpidIsDir, &prop );
 	if ( hr != S_OK )
 	{
-		_com_issue_error( hr );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 
 	if ( prop.vt == VT_EMPTY )
@@ -232,7 +284,7 @@ void ArchiveExtractCallback::GetPropertyIsDir( UInt32 index )
 	}
 	else if ( prop.vt != VT_BOOL )
 	{
-		_com_issue_error( E_FAIL );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 	else
 	{
@@ -242,11 +294,12 @@ void ArchiveExtractCallback::GetPropertyIsDir( UInt32 index )
 
 void ArchiveExtractCallback::GetPropertyModifiedTime( UInt32 index )
 {
-	CPropVariant prop;
+#ifdef _WIN32
+	PROPVARIANT prop;
 	HRESULT hr = m_archiveHandler->GetProperty( index, kpidMTime, &prop );
 	if ( hr != S_OK )
 	{
-		_com_issue_error( hr );
+		m_console->PrintMessage(string_format("Error reading properties of file");
 	}
 
 	if ( prop.vt == VT_EMPTY )
@@ -255,22 +308,28 @@ void ArchiveExtractCallback::GetPropertyModifiedTime( UInt32 index )
 	}
 	else if ( prop.vt != VT_FILETIME )
 	{
-		_com_issue_error( E_FAIL );
+		m_console->PrintMessage(string_format("Error reading properties of file");
 	}
 	else
 	{
 		m_modifiedTime = prop.filetime;
 		m_hasModifiedTime = true;
 	}
+#else
+	struct stat props;
+	stat(m_absPath.c_str(), &props);
+	m_props = props;
+
+#endif
 }
 
 void ArchiveExtractCallback::GetPropertySize( UInt32 index )
 {
-	CPropVariant prop;
+	PROPVARIANT prop;
 	HRESULT hr = m_archiveHandler->GetProperty( index, kpidSize, &prop );
 	if ( hr != S_OK )
 	{
-		_com_issue_error( hr );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 
 	switch ( prop.vt )
@@ -291,7 +350,7 @@ void ArchiveExtractCallback::GetPropertySize( UInt32 index )
 		m_newFileSize = (UInt64)prop.uhVal.QuadPart;
 		break;
 	default:
-		_com_issue_error( E_FAIL );
+		m_console->PrintMessage(string_format("Error reading properties of file"));
 	}
 
 	m_hasNewFileSize = true;

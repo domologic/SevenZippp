@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include <Common/MyTypes.h>
+#include <Common/MyWindows.h>
+#include <Common/MyString.h>
 
-#include <Common/Types.h>
+#define k_BstrSize_Max 0xFFFFFFFF
+typedef UINT32 CBstrSizeType;
 
-
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {

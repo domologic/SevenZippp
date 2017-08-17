@@ -1,21 +1,28 @@
 // This file is based on the following file from the LZMA SDK (http://www.7-zip.org/sdk.html):
 //   ./CPP/7zip/UI/Client7z/Client7z.cpp
+#ifdef _WIN32
 #include "StdAfx.h"
+#endif
+#include <stdio.h>
 #include "ArchiveUpdateCallback.h"
 #include "PropVariant.h"
 #include "FileSys.h"
+#include "7zDefines.h"
 #include "InStreamWrapper.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
 
-ArchiveUpdateCallback::ArchiveUpdateCallback( const TString& dirPrefix, const std::vector< FilePathInfo >& filePaths )
+ArchiveUpdateCallback::ArchiveUpdateCallback( const TString& dirPrefix, const std::vector< FilePathInfo >& filePaths, const TString& password, ConsoleCallback *console, CProgressCallback *cb )
 	: m_refCount( 0 )
 	, m_dirPrefix( dirPrefix )
 	, m_filePaths( filePaths )
+	, m_console ( console )
+	, m_password ( password )
+	, m_callback ( cb )
 {
 }
 
@@ -25,12 +32,12 @@ ArchiveUpdateCallback::~ArchiveUpdateCallback()
 
 STDMETHODIMP ArchiveUpdateCallback::QueryInterface( REFIID iid, void** ppvObject )
 {
-	if ( iid == __uuidof( IUnknown ) )
+	/*if ( iid == __uuidof( IUnknown ) )
 	{
 		*ppvObject = reinterpret_cast< IUnknown* >( this );
 		AddRef();
 		return S_OK;
-	}
+	}*/
 
 	if ( iid == IID_IArchiveUpdateCallback )
 	{
@@ -58,17 +65,19 @@ STDMETHODIMP ArchiveUpdateCallback::QueryInterface( REFIID iid, void** ppvObject
 
 STDMETHODIMP_(ULONG) ArchiveUpdateCallback::AddRef()
 {
-	return static_cast< ULONG >( InterlockedIncrement( &m_refCount ) );
+	/*return static_cast< ULONG >( InterlockedIncrement( &m_refCount ) );*/
+	return 0;
 }
 
 STDMETHODIMP_(ULONG) ArchiveUpdateCallback::Release()
 {
-	ULONG res = static_cast< ULONG >( InterlockedDecrement( &m_refCount ) );
+	/*ULONG res = static_cast< ULONG >( InterlockedDecrement( &m_refCount ) );
 	if ( res == 0 )
 	{
 		delete this;
 	}
-	return res;
+	return res;*/
+	return 0;
 }
 
 STDMETHODIMP ArchiveUpdateCallback::SetTotal( UInt64 size )
@@ -118,20 +127,20 @@ STDMETHODIMP ArchiveUpdateCallback::GetProperty( UInt32 index, PROPID propID, PR
 	{
 		return E_INVALIDARG;
 	}
-
 	const FilePathInfo& fileInfo = m_filePaths.at( index );
 	switch ( propID )
 	{
-		case kpidPath:		prop = FileSys::ExtractRelativePath( m_dirPrefix, fileInfo.FilePath ).c_str(); break;
-		case kpidIsDir:		prop = fileInfo.IsDirectory; break;
-		case kpidSize:		prop = fileInfo.Size; break;
-		case kpidAttrib:	prop = fileInfo.Attributes; break;
-		case kpidCTime:		prop = fileInfo.CreationTime; break;
-		case kpidATime:		prop = fileInfo.LastAccessTime; break;
-		case kpidMTime:		prop = fileInfo.LastWriteTime; break;
+		case kpidPath:		prop = FileSys::ExtractRelativePath( m_dirPrefix, fileInfo.FilePath ).c_str(); prop.Detach( value ); break;
+		case kpidIsDir:		prop = fileInfo.IsDirectory; prop.Detach( value ); break;
+		case kpidSize:		prop = fileInfo.Size; prop.Detach( value ); break;
+		case kpidAttrib:	prop = fileInfo.Attributes; prop.Detach( value ); break;
+#ifdef _WIN32
+		case kpidCTime:		prop = fileInfo.CreationTime; prop.Detach( value ); break;
+		case kpidATime:		prop = fileInfo.LastAccessTime; prop.Detach( value ); break;
+		case kpidMTime:		prop = fileInfo.LastWriteTime; prop.Detach( value ); break;
+#endif
 	}
-
-	prop.Detach( value );
+		
 	return S_OK;
 }
 
@@ -148,13 +157,18 @@ STDMETHODIMP ArchiveUpdateCallback::GetStream( UInt32 index, ISequentialInStream
 		return S_OK;
 	}
 
-	CComPtr< IStream > fileStream = FileSys::OpenFileToRead( fileInfo.FilePath );
+	CMyComPtr< IInStream > fileStream = FileSys::OpenFileToRead( fileInfo.FilePath );
 	if ( fileStream == NULL )
 	{
+#ifdef _WIN32
 		return HRESULT_FROM_WIN32( GetLastError() );
+#else
+		m_console->PrintMessage(string_format("Error creating Filestream, cannot open file: %s!", fileInfo.FilePath.c_str()));
+		return S_FALSE;
+#endif
 	}
 
-	CComPtr< InStreamWrapper > wrapperStream = new InStreamWrapper( fileStream );
+	CMyComPtr< InStreamWrapper > wrapperStream = new InStreamWrapper( fileStream, m_callback );
 	*inStream = wrapperStream.Detach();
 
 	return S_OK;
@@ -167,10 +181,16 @@ STDMETHODIMP ArchiveUpdateCallback::SetOperationResult( Int32 operationResult )
 
 STDMETHODIMP ArchiveUpdateCallback::CryptoGetTextPassword2( Int32* passwordIsDefined, BSTR* password )
 {
-	// TODO: support passwords
-	*passwordIsDefined = 0;
-	*password = SysAllocString( L"" );
-	return *password != 0 ? S_OK : E_OUTOFMEMORY;
+	if (m_password.size() == 0) {
+		/*m_console->PrintMessage("Password is not defined!");
+		return E_ABORT;*/
+		*passwordIsDefined = (Int32) false;
+	} else {
+		*passwordIsDefined = (Int32) true;
+	}
+	std::wstring wpassword(m_password.begin(), m_password.end());
+	*password = AllocateBSTR(wpassword.c_str());
+	return S_OK;
 }
 
 STDMETHODIMP ArchiveUpdateCallback::SetRatioInfo( const UInt64* inSize, const UInt64* outSize )

@@ -4,7 +4,7 @@
 #include "Enum.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 	struct CompressionFormat
 	{

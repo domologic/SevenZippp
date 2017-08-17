@@ -1,16 +1,18 @@
+#ifdef _WIN32
 #include "StdAfx.h"
+
 #include "PathScanner.h"
 #include "FileSys.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
 
 void PathScanner::Scan( const TString& root, Callback& cb )
 {
-	Scan( root, _T( "*" ), cb );
+	Scan( root,  "*", cb );
 }
 
 void PathScanner::Scan( const TString& root, const TString& searchPattern, Callback& cb )
@@ -125,3 +127,4 @@ FilePathInfo PathScanner::ConvertFindInfo( const TString& directory, const WIN32
 
 }
 }
+#endif

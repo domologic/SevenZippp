@@ -1,11 +1,13 @@
 // This file is based on the following file from the LZMA SDK (http://www.7-zip.org/sdk.html):
 //   ./CPP/Windows/PropVariant.cpp
+
 #include "stdafx.h"
 #include "PropVariant.h"
 #include <Common/Defs.h>
+#include <stdlib.h>
 
 
-namespace SevenZip
+namespace SevenZippp
 {
 namespace intl
 {
@@ -55,7 +57,7 @@ static const char *kMemException = "out of memory";
 
 CPropVariant& CPropVariant::operator=(LPCOLESTR lpszSrc)
 {
-  InternalClear();
+  /*InternalClear();
   vt = VT_BSTR;
   wReserved1 = 0;
   bstrVal = ::SysAllocString(lpszSrc);
@@ -64,8 +66,31 @@ CPropVariant& CPropVariant::operator=(LPCOLESTR lpszSrc)
     throw kMemException;
     // vt = VT_ERROR;
     // scode = E_OUTOFMEMORY;
-  }
+  }*/
   return *this;
+}
+
+static inline void *AllocateForBSTR(size_t cb) { return ::malloc(cb); }
+
+BSTR SysAllocStringByteLen(LPCSTR s, UINT len)
+{
+  /* Original SysAllocStringByteLen in Win32 maybe fills only unaligned null OLECHAR at the end.
+     We provide also aligned null OLECHAR at the end. */
+
+  if (len >= (k_BstrSize_Max - sizeof(OLECHAR) - sizeof(OLECHAR) - sizeof(CBstrSizeType)))
+    return NULL;
+
+  UINT size = (len + sizeof(OLECHAR) + sizeof(OLECHAR) - 1) & ~(sizeof(OLECHAR) - 1);
+  void *p = AllocateForBSTR(size + sizeof(CBstrSizeType));
+  if (!p)
+    return NULL;
+  *(CBstrSizeType *)p = (CBstrSizeType)len;
+  BSTR bstr = (BSTR)((CBstrSizeType *)p + 1);
+  if (s)
+    memcpy(bstr, s, len);
+  for (; len < size; len++)
+    ((Byte *)bstr)[len] = 0;
+  return bstr;
 }
 
 
@@ -75,7 +100,7 @@ CPropVariant& CPropVariant::operator=(const char *s)
   vt = VT_BSTR;
   wReserved1 = 0;
   UINT len = (UINT)strlen(s);
-  bstrVal = ::SysAllocStringByteLen(0, (UINT)len * sizeof(OLECHAR));
+  bstrVal = SysAllocStringByteLen(0, (UINT)len * sizeof(OLECHAR));
   if (bstrVal == NULL)
   {
     throw kMemException;
@@ -137,7 +162,8 @@ static HRESULT MyPropVariantClear(PROPVARIANT *prop)
       prop->wReserved1 = 0;
       return S_OK;
   }
-  return ::VariantClear((VARIANTARG *)prop);
+//  return ::VariantClear((VARIANTARG *)prop);
+	return S_OK;
 }
 
 HRESULT CPropVariant::Clear()
@@ -147,7 +173,7 @@ HRESULT CPropVariant::Clear()
 
 HRESULT CPropVariant::Copy(const PROPVARIANT* pSrc)
 {
-  ::VariantClear((tagVARIANT *)this);
+//  ::VariantClear((tagVARIANT *)this);
   switch(pSrc->vt)
   {
     case VT_UI1:
@@ -169,7 +195,8 @@ HRESULT CPropVariant::Copy(const PROPVARIANT* pSrc)
       memmove((PROPVARIANT*)this, pSrc, sizeof(PROPVARIANT));
       return S_OK;
   }
-  return ::VariantCopy((tagVARIANT *)this, (tagVARIANT *)const_cast<PROPVARIANT *>(pSrc));
+//  return ::VariantCopy((tagVARIANT *)this, (tagVARIANT *)const_cast<PROPVARIANT *>(pSrc));
+	return S_OK;
 }
 
 
@@ -233,7 +260,7 @@ int CPropVariant::Compare(const CPropVariant &a)
     case VT_I8: return MyCompare(hVal.QuadPart, a.hVal.QuadPart);
     case VT_UI8: return MyCompare(uhVal.QuadPart, a.uhVal.QuadPart);
     case VT_BOOL: return -MyCompare(boolVal, a.boolVal);
-    case VT_FILETIME: return ::CompareFileTime(&filetime, &a.filetime);
+//    case VT_FILETIME: return ::CompareFileTime(&filetime, &a.filetime);
     case VT_BSTR:
       return 0; // Not implemented
       // return MyCompare(aPropVarint.cVal);

@@ -1,10 +1,11 @@
 #include "stdafx.h"
+
 #include "SevenZipException.h"
 
 
-namespace SevenZip
+namespace SevenZippp
 {
-
+#ifdef _WIN32
 TString StrFmt( const TCHAR* format, ... )
 {
 	TString result;
@@ -25,6 +26,7 @@ TString StrFmt( const TCHAR* format, ... )
 	return result;
 }
 
+
 TString GetWinErrMsg( const TString& contextMessage, DWORD lastError )
 {
 	// TODO: use FormatMessage to get the appropriate message from the 
@@ -36,6 +38,7 @@ TString GetCOMErrMsg( const TString& contextMessage, HRESULT lastError )
 	// TODO: use FormatMessage to get the appropriate message from the 
 	return StrFmt( _T( "%s: HRESULT = 0x%08X" ), contextMessage.c_str(), lastError );
 }
+#endif
 
 SevenZipException::SevenZipException()
 {
