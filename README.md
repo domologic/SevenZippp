@@ -37,10 +37,10 @@ To extract an archive, here's an example:
 It's pretty similar to creating an archive:
 
     try {
-        SevenZippp::SevenZipCompressor compressor(*m_plib, "<path/to>/archive.7z", password);
-        compressor.CompressDirectory(path);
+        SevenZippp::SevenZipCompressor compressor(lib, "<path/to>/archive.7z", password);
+        compressor.CompressDirectory("<path/to/directory>");
         // or if it is a single file to compress:
-        compressor.CompressFile(path);
+        compressor.CompressFile("<path/to/file>");
     } catch(SevenZippp::SevenZipException e) {
         std::cout << e.GetMessage() << std::endl;
     }
